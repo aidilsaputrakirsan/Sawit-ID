@@ -60,13 +60,28 @@ st.markdown("""
 # LOAD DATA
 @st.cache_data(ttl=3600)
 def load_data():
+    import os
+    
+    # Debug: Show current directory
+    st.sidebar.write("📂 Working Directory:", os.getcwd())
+    st.sidebar.write("📁 Files in root:", os.listdir('.'))
+    
+    if os.path.exists('data'):
+        st.sidebar.write("📁 Files in data/:", os.listdir('data'))
+    
     try:
         df = pd.read_csv('data/sample_data_location.csv')
-    except:
+        st.sidebar.success("✅ Loaded from: data/sample_data_location.csv")
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Path 1 failed: {e}")
         try:
             df = pd.read_csv('sample_data_location.csv')
-        except:
+            st.sidebar.success("✅ Loaded from: sample_data_location.csv")
+        except Exception as e2:
+            st.sidebar.error(f"❌ Path 2 failed: {e2}")
+            st.sidebar.info("🔄 Using fallback data (generated)")
             df = create_fallback_data()
+    
     return df
 
 def create_fallback_data():
