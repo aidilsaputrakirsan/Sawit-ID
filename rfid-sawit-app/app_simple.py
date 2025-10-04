@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import plotly.graph_objects as go
 
-# ============================
 # PAGE CONFIG
-# ============================
 st.set_page_config(
     page_title="Sawit-ID Dashboard",
     page_icon="🌴",
@@ -13,9 +11,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============================
-# CUSTOM CSS - DARK MODE
-# ============================
+# CUSTOM CSS
 st.markdown("""
     <style>
     .stApp {
@@ -58,78 +54,95 @@ st.markdown("""
     [data-testid="stMetricLabel"] {
         color: #cbd5e1 !important;
     }
-    
-    .stSelectbox label {
-        color: #cbd5e1 !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-# ============================
-# LOAD DATA (OPTIMIZED WITH CACHING)
-# ============================
-@st.cache_data(ttl=3600)  # Cache for 1 hour
+# LOAD DATA
+@st.cache_data(ttl=3600)
 def load_data():
-    """Load data from CSV with optimal caching"""
     try:
-        # Try to read from uploaded CSV first
-        df = pd.read_csv('data/sample_data.csv')
+        df = pd.read_csv('data/sample_data_location.csv')
     except:
-        # Fallback to sample data if CSV not found
-        df = create_fallback_data()
-    
+        try:
+            df = pd.read_csv('sample_data_location.csv')
+        except:
+            df = create_fallback_data()
     return df
 
 def create_fallback_data():
-    """Fallback sample data if CSV not available"""
-    data = {
-        'id_pohon': ['00001', '00002', '00003', '00004', '00005', '00006', 
-                     '00007', '00008', '00009', '00010', '00011', '00012',
-                     '00013', '00014', '00015', '00016', '00017', '00018',
-                     '00019', '00020'],
-        'cluster': ['A']*6 + ['B']*6 + ['C']*8,
-        'ph_tanah': [6.2, 6.5, 5.9, 6.8, 6.6, 6.9, 5.2, 5.0, 4.8, 6.3, 6.7, 5.1,
-                     6.4, 6.5, 5.3, 6.1, 6.9, 4.9, 6.6, 6.4],
-        'kelembaban': [32, 34, 31, 35, 36, 35, 26, 25, 24, 33, 35, 26,
-                       33, 34, 27, 32, 36, 25, 34, 34],
-        'jumlah_janjang': [18, 20, 17, 22, 21, 23, 10, 9, 8, 19, 20, 9,
-                           19, 21, 11, 18, 24, 8, 20, 20],
-        'berat_tbs_kg': [45, 48, 42, 52, 50, 54, 28, 25, 22, 46, 51, 26,
-                         47, 49, 29, 44, 55, 24, 48, 48],
-        'penyakit': [0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0]
-    }
+    np.random.seed(42)
+    data = []
+    pohon_id = 1
+    clusters = ['A'] * 35 + ['B'] * 35 + ['C'] * 30
+    spacing = 9
+    row_offset = spacing * 0.866
+    
+    for i, cluster in enumerate(clusters):
+        row = i // 10
+        col = i % 10
+        
+        if cluster == 'A':
+            base_x, base_y = 50, 200
+            ph = round(np.random.uniform(6.0, 6.9), 1)
+            kelembaban = np.random.randint(30, 38)
+            janjang = np.random.randint(18, 24)
+            berat = np.random.randint(42, 55)
+            penyakit = 0
+        elif cluster == 'B':
+            base_x, base_y = 50, 170
+            ph = round(np.random.uniform(5.5, 6.5), 1)
+            kelembaban = np.random.randint(28, 35)
+            janjang = np.random.randint(14, 20)
+            berat = np.random.randint(35, 48)
+            penyakit = np.random.choice([0, 1], p=[0.8, 0.2])
+        else:
+            base_x, base_y = 50, 140
+            ph = round(np.random.uniform(4.8, 5.8), 1)
+            kelembaban = np.random.randint(22, 30)
+            janjang = np.random.randint(8, 15)
+            berat = np.random.randint(20, 38)
+            penyakit = np.random.choice([0, 1], p=[0.4, 0.6])
+        
+        x = base_x + (col * spacing)
+        if row % 2 == 1:
+            x += spacing / 2
+        y = base_y + (row * row_offset)
+        
+        data.append({
+            'id_pohon': f'{pohon_id:05d}',
+            'cluster': cluster,
+            'koordinat_x': round(x, 1),
+            'koordinat_y': round(y, 1),
+            'ph_tanah': ph,
+            'kelembaban': kelembaban,
+            'jumlah_janjang': janjang,
+            'berat_tbs_kg': berat,
+            'penyakit': penyakit
+        })
+        pohon_id += 1
+    
     return pd.DataFrame(data)
 
-# ============================
-# HEALTH CLASSIFICATION
-# ============================
 def classify_health(row):
-    """Simple classification - scoring 0-12"""
     score = 0
-    
-    # pH Check
     if 5.5 <= row['ph_tanah'] <= 7.0:
         score += 3
     elif 5.0 <= row['ph_tanah'] < 5.5:
         score += 1
     
-    # Moisture Check
     if row['kelembaban'] >= 30:
         score += 3
     elif row['kelembaban'] >= 25:
         score += 1
     
-    # Productivity Check
     if row['jumlah_janjang'] >= 18:
         score += 3
     elif row['jumlah_janjang'] >= 12:
         score += 1
     
-    # Disease Check
     if row['penyakit'] == 0:
         score += 3
     
-    # Classification
     if score >= 10:
         return 'Baik'
     elif score >= 6:
@@ -137,9 +150,7 @@ def classify_health(row):
     else:
         return 'Rusak'
 
-# ============================
 # MAIN APP
-# ============================
 def main():
     # Header
     st.markdown('<p class="big-title">🌴 Sawit-ID Dashboard</p>', unsafe_allow_html=True)
@@ -153,20 +164,17 @@ def main():
     st.markdown("""
     <div class="info-card">
     <h3 style="color: #10b981; margin-top: 0;">ℹ️ Cara Kerja Sistem</h3>
-    <p><strong>1. RFID Tag</strong> → Setiap pohon punya ID unik (seperti KTP)</p>
-    <p><strong>2. IoT Sensors</strong> → 1 sensor untuk 100 pohon, ukur pH & kelembaban</p>
+    <p><strong>1. RFID Tag</strong> → Setiap pohon punya ID unik</p>
+    <p><strong>2. IoT Sensors</strong> → Ukur pH & kelembaban per area</p>
     <p><strong>3. Input Manual</strong> → Petani catat hasil panen & kondisi pohon</p>
-    <p><strong>4. Klasifikasi Otomatis</strong> → Sistem nilai kesehatan pohon: Baik / Sedang / Rusak</p>
+    <p><strong>4. Klasifikasi Otomatis</strong> → Sistem nilai kesehatan: Baik / Sedang / Rusak</p>
     </div>
     """, unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # ============================
     # METRICS
-    # ============================
     st.markdown("## 📊 Ringkasan Data")
-    
     col1, col2, col3, col4 = st.columns(4)
     
     total = len(df)
@@ -181,271 +189,193 @@ def main():
     
     st.markdown("---")
     
-    # ============================
-    # CLUSTER ANALYSIS
-    # ============================
-    st.markdown("## 🗺️ Analisis per Area (Cluster)")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Bar Chart
-        cluster_health = pd.crosstab(df['cluster'], df['kesehatan'])
-        
-        fig = go.Figure()
-        
-        if 'Baik' in cluster_health.columns:
-            fig.add_trace(go.Bar(
-                name='Baik', 
-                x=cluster_health.index, 
-                y=cluster_health['Baik'], 
-                marker_color='#10b981'
-            ))
-        
-        if 'Sedang' in cluster_health.columns:
-            fig.add_trace(go.Bar(
-                name='Sedang', 
-                x=cluster_health.index, 
-                y=cluster_health['Sedang'], 
-                marker_color='#fbbf24'
-            ))
-        
-        if 'Rusak' in cluster_health.columns:
-            fig.add_trace(go.Bar(
-                name='Rusak', 
-                x=cluster_health.index, 
-                y=cluster_health['Rusak'], 
-                marker_color='#ef4444'
-            ))
-        
-        fig.update_layout(
-            title="Kesehatan Pohon per Cluster",
-            xaxis_title="Cluster (Area)",
-            yaxis_title="Jumlah Pohon",
-            barmode='group',
-            height=400,
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Info Cluster")
-        
-        clusters = {
-            'A': {'name': 'Area Utara', 'soil': 'Aluvial', 'color': '#10b981'},
-            'B': {'name': 'Area Tengah', 'soil': 'Latosol', 'color': '#3b82f6'},
-            'C': {'name': 'Area Selatan', 'soil': 'Organosol', 'color': '#ef4444'}
-        }
-        
-        for cluster_id, info in clusters.items():
-            cluster_data = df[df['cluster'] == cluster_id]
-            st.markdown(f"""
-            <div style="background: {info['color']}20; padding: 1rem; border-radius: 8px; 
-                        border-left: 4px solid {info['color']}; margin-bottom: 1rem;">
-                <strong style="color: {info['color']};">Cluster {cluster_id}</strong><br>
-                <small style="color: #cbd5e1;">{info['name']} - {info['soil']}</small><br>
-                <span style="font-size: 0.9rem; color: #cbd5e1;">🌴 {len(cluster_data)} pohon</span>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # ============================
-    # COMPARISON
-    # ============================
-    st.markdown("## 📈 Perbandingan Variabel Penting")
+    # 3D MAP
+    st.markdown("## 🗺️ Peta Lokasi Pohon (3D View)")
     
     st.info("""
-    **3 Variabel Utama** yang mempengaruhi kesehatan pohon:
-    - **pH Tanah** (dari IoT sensor) - Optimal: 5.5-7.0
-    - **Kelembaban** (dari IoT sensor) - Optimal: 30-38%
-    - **Produktivitas** (dari input manual) - Optimal: 18+ janjang/tahun
+    **Visualisasi 3D - 100 pohon dengan pola tanam TRIANGULAR:**
+    - 🟢 Hijau = Cluster A (Utara) | 🔵 Biru = Cluster B (Tengah) | 🔴 Merah = Cluster C (Selatan)
+    - **Tip:** Drag untuk rotate, scroll untuk zoom, double-click untuk reset
     """)
     
-    var_option = st.selectbox(
-        "Pilih variabel untuk dibandingkan:",
-        ["pH Tanah", "Kelembaban", "Produktivitas (Jumlah Janjang)"]
+    # Create 3D scatter manually untuk kontrol penuh
+    fig = go.Figure()
+    
+    # Add trace untuk setiap cluster
+    for cluster, color, name in [('A', '#10b981', 'Cluster A'), 
+                                   ('B', '#3b82f6', 'Cluster B'), 
+                                   ('C', '#ef4444', 'Cluster C')]:
+        df_cluster = df[df['cluster'] == cluster]
+        
+        fig.add_trace(go.Scatter3d(
+            x=df_cluster['koordinat_x'],
+            y=df_cluster['koordinat_y'],
+            z=[0] * len(df_cluster),
+            mode='markers',
+            name=name,
+            marker=dict(
+                size=8,
+                color=color,
+                opacity=0.8,
+                line=dict(color='white', width=0.5)
+            ),
+            text=[f"ID: {row['id_pohon']}<br>Kesehatan: {row['kesehatan']}<br>pH: {row['ph_tanah']}<br>Kelembaban: {row['kelembaban']}%<br>Janjang: {row['jumlah_janjang']}" 
+                  for _, row in df_cluster.iterrows()],
+            hovertemplate='%{text}<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        height=600,
+        template="plotly_dark",
+        scene=dict(
+            xaxis=dict(title='Koordinat X (Timur-Barat)', range=[40, 145]),
+            yaxis=dict(title='Koordinat Y (Utara-Selatan)', range=[135, 230]),
+            zaxis=dict(title='Elevasi', range=[-5, 5], showticklabels=False),
+            camera=dict(eye=dict(x=1.5, y=-1.5, z=1.3)),
+            aspectmode='manual',
+            aspectratio=dict(x=1, y=0.9, z=0.2)
+        ),
+        showlegend=True,
+        legend=dict(x=0.85, y=0.95)
     )
     
-    var_map = {
-        "pH Tanah": "ph_tanah",
-        "Kelembaban": "kelembaban",
-        "Produktivitas (Jumlah Janjang)": "jumlah_janjang"
-    }
+    st.plotly_chart(fig, use_container_width=True)
     
-    selected_var = var_map[var_option]
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Box plot
-        fig_box = px.box(
-            df, 
-            x='cluster', 
-            y=selected_var,
-            color='cluster',
-            title=f"{var_option} per Cluster",
-            color_discrete_map={'A': '#10b981', 'B': '#3b82f6', 'C': '#ef4444'},
-            template="plotly_dark"
-        )
-        fig_box.update_layout(showlegend=False)
-        st.plotly_chart(fig_box, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Statistik per Cluster")
-        
-        stats = df.groupby('cluster')[selected_var].agg(['mean', 'min', 'max']).round(1)
-        stats.columns = ['Rata-rata', 'Minimum', 'Maximum']
-        
-        st.dataframe(stats, use_container_width=True)
-        
-        best_cluster = stats['Rata-rata'].idxmax()
-        st.success(f"✨ **Cluster {best_cluster}** punya nilai terbaik untuk {var_option}!")
-    
-    st.markdown("---")
-    
-    # ============================
-    # HEALTH CLASSIFICATION
-    # ============================
-    st.markdown("## 🎯 Klasifikasi Kesehatan")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        # Pie chart
-        health_counts = df['kesehatan'].value_counts()
-        
-        fig_pie = px.pie(
-            values=health_counts.values,
-            names=health_counts.index,
-            title="Distribusi Kesehatan Pohon",
-            color=health_counts.index,
-            color_discrete_map={'Baik': '#10b981', 'Sedang': '#fbbf24', 'Rusak': '#ef4444'},
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with col2:
-        st.markdown("### Kriteria Penilaian")
-        
-        st.markdown("""
-        **Sistem memberi nilai 0-12 poin:**
-        
-        1. **pH Tanah** (IoT)
-           - Bagus (5.5-7.0): +3 poin
-           - Kurang (5.0-5.5): +1 poin
-           - Buruk (<5.0): 0 poin
-        
-        2. **Kelembaban** (IoT)
-           - Bagus (≥30%): +3 poin
-           - Kurang (≥25%): +1 poin
-           - Buruk (<25%): 0 poin
-        
-        3. **Produktivitas** (Manual)
-           - Bagus (≥18 janjang): +3 poin
-           - Kurang (≥12 janjang): +1 poin
-           - Buruk (<12 janjang): 0 poin
-        
-        4. **Penyakit** (Manual)
-           - Sehat: +3 poin
-           - Sakit: 0 poin
-        
-        **Hasil:**
-        - 10-12 poin = 🟢 **Baik**
-        - 6-9 poin = 🟡 **Sedang**
-        - 0-5 poin = 🔴 **Rusak**
-        """)
-    
-    st.markdown("---")
-    
-    # ============================
-    # RECOMMENDATIONS
-    # ============================
-    st.markdown("## 💡 Rekomendasi Tindakan")
-    
-    # Count clusters
-    cluster_counts = df['cluster'].value_counts()
-    cluster_health_dist = df.groupby('cluster')['kesehatan'].value_counts(normalize=True).unstack(fill_value=0)
-    
+    # Keterangan
     col1, col2, col3 = st.columns(3)
-    
     with col1:
-        a_health = cluster_health_dist.loc['A', 'Baik'] if 'A' in cluster_health_dist.index and 'Baik' in cluster_health_dist.columns else 0
-        status_a = "Baik" if a_health > 0.5 else "Perlu Perhatian"
-        
-        st.markdown(f"""
-        <div style="background: #10b98120; padding: 1.5rem; border-radius: 12px;">
-            <h3 style="color: #10b981;">✅ Cluster A</h3>
-            <p><strong>Status:</strong> {status_a}</p>
-            <hr style="border-color: #10b981;">
-            <p><strong>Tindakan:</strong></p>
-            <ul>
-                <li>Pertahankan perawatan</li>
-                <li>Monitor pH rutin</li>
-                <li>Lanjutkan pemupukan</li>
-            </ul>
+        st.markdown("""
+        <div style="background: #10b98120; padding: 1rem; border-radius: 8px; border-left: 4px solid #10b981;">
+            <strong style="color: #10b981;">🟢 Cluster A - Utara</strong><br>
+            <small style="color: #cbd5e1;">Y: 200-223m | Sehat</small>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
-        b_health = cluster_health_dist.loc['B', 'Baik'] if 'B' in cluster_health_dist.index and 'Baik' in cluster_health_dist.columns else 0
-        status_b = "Sangat Baik" if b_health > 0.7 else "Baik"
-        
-        st.markdown(f"""
-        <div style="background: #3b82f620; padding: 1.5rem; border-radius: 12px;">
-            <h3 style="color: #3b82f6;">⭐ Cluster B</h3>
-            <p><strong>Status:</strong> {status_b}</p>
-            <hr style="border-color: #3b82f6;">
-            <p><strong>Tindakan:</strong></p>
-            <ul>
-                <li>Referensi terbaik!</li>
-                <li>Tiru metode ke cluster lain</li>
-                <li>Monitor kelembaban</li>
-            </ul>
+        st.markdown("""
+        <div style="background: #3b82f620; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <strong style="color: #3b82f6;">🔵 Cluster B - Tengah</strong><br>
+            <small style="color: #cbd5e1;">Y: 170-193m | Sedang</small>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
-        c_health = cluster_health_dist.loc['C', 'Rusak'] if 'C' in cluster_health_dist.index and 'Rusak' in cluster_health_dist.columns else 0
-        status_c = "URGENT!" if c_health > 0.5 else "Perlu Perhatian"
-        
-        st.markdown(f"""
-        <div style="background: #ef444420; padding: 1.5rem; border-radius: 12px;">
-            <h3 style="color: #ef4444;">⚠️ Cluster C</h3>
-            <p><strong>Status:</strong> {status_c}</p>
-            <hr style="border-color: #ef4444;">
-            <p><strong>Tindakan:</strong></p>
-            <ul>
-                <li><strong>Prioritas tinggi!</strong></li>
-                <li>Naikkan pH (tambah kapur)</li>
-                <li>Obati penyakit</li>
-                <li>Pertimbangkan replanting</li>
-            </ul>
+        st.markdown("""
+        <div style="background: #ef444420; padding: 1rem; border-radius: 8px; border-left: 4px solid #ef4444;">
+            <strong style="color: #ef4444;">🔴 Cluster C - Selatan</strong><br>
+            <small style="color: #cbd5e1;">Y: 140-155m | Rusak</small>
         </div>
         """, unsafe_allow_html=True)
     
-    # ============================
-    # DATA TABLE
-    # ============================
     st.markdown("---")
-    st.markdown("## 📋 Data Lengkap")
     
-    display_df = df[['id_pohon', 'cluster', 'ph_tanah', 'kelembaban', 'jumlah_janjang', 'berat_tbs_kg', 'kesehatan']].copy()
-    display_df.columns = ['ID Pohon', 'Cluster', 'pH', 'Kelembaban (%)', 'Janjang', 'Berat TBS (kg)', 'Kesehatan']
+    # HEALTH DISTRIBUTION
+    st.markdown("## 📊 Distribusi Kesehatan Pohon")
     
-    st.dataframe(display_df, use_container_width=True, height=300)
+    col1, col2 = st.columns(2)
     
-    # ============================
+    with col1:
+        # Pie Chart - Overall Health
+        health_counts = df['kesehatan'].value_counts()
+        
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=health_counts.index,
+            values=health_counts.values,
+            marker=dict(colors=['#10b981', '#fbbf24', '#ef4444']),
+            hole=0.4
+        )])
+        
+        fig_pie.update_layout(
+            title="Distribusi Kesehatan Total",
+            template="plotly_dark",
+            height=400
+        )
+        
+        st.plotly_chart(fig_pie, use_container_width=True)
+    
+    with col2:
+        # Bar Chart - Health per Cluster
+        cluster_health = pd.crosstab(df['cluster'], df['kesehatan'])
+        
+        fig_bar = go.Figure()
+        
+        if 'Baik' in cluster_health.columns:
+            fig_bar.add_trace(go.Bar(
+                name='Baik',
+                x=cluster_health.index,
+                y=cluster_health['Baik'],
+                marker_color='#10b981'
+            ))
+        
+        if 'Sedang' in cluster_health.columns:
+            fig_bar.add_trace(go.Bar(
+                name='Sedang',
+                x=cluster_health.index,
+                y=cluster_health['Sedang'],
+                marker_color='#fbbf24'
+            ))
+        
+        if 'Rusak' in cluster_health.columns:
+            fig_bar.add_trace(go.Bar(
+                name='Rusak',
+                x=cluster_health.index,
+                y=cluster_health['Rusak'],
+                marker_color='#ef4444'
+            ))
+        
+        fig_bar.update_layout(
+            title="Kesehatan per Cluster",
+            xaxis_title="Cluster",
+            yaxis_title="Jumlah Pohon",
+            barmode='group',
+            template="plotly_dark",
+            height=400
+        )
+        
+        st.plotly_chart(fig_bar, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # SUMMARY STATISTICS
+    st.markdown("## 📈 Ringkasan Statistik per Cluster")
+    
+    summary = df.groupby('cluster').agg({
+        'id_pohon': 'count',
+        'ph_tanah': 'mean',
+        'kelembaban': 'mean',
+        'jumlah_janjang': 'mean',
+        'berat_tbs_kg': 'mean',
+        'penyakit': lambda x: (x == 0).sum()
+    }).round(1)
+    
+    summary.columns = ['Jumlah Pohon', 'Rata² pH', 'Rata² Kelembaban (%)', 'Rata² Janjang', 'Rata² Berat TBS (kg)', 'Pohon Sehat']
+    summary['% Sehat'] = (summary['Pohon Sehat'] / summary['Jumlah Pohon'] * 100).round(1)
+    
+    st.dataframe(summary, use_container_width=True)
+    
+    # Insight Box
+    best_cluster = summary['Rata² Janjang'].idxmax()
+    worst_cluster = summary['Rata² Janjang'].idxmin()
+    
+    st.success(f"✅ **Cluster {best_cluster}** memiliki produktivitas tertinggi ({summary.loc[best_cluster, 'Rata² Janjang']:.1f} janjang/pohon)")
+    st.error(f"⚠️ **Cluster {worst_cluster}** memerlukan perhatian khusus ({summary.loc[worst_cluster, 'Rata² Janjang']:.1f} janjang/pohon)")
+    
+    st.markdown("---")
+    
+    # DATA TABLE
+    st.markdown("## 📋 Data Lengkap Pohon")
+    
+    display_df = df[['id_pohon', 'cluster', 'koordinat_x', 'koordinat_y', 'ph_tanah', 'kelembaban', 'jumlah_janjang', 'berat_tbs_kg', 'kesehatan']].copy()
+    display_df.columns = ['ID', 'Area', 'X (m)', 'Y (m)', 'pH', 'Kelembaban (%)', 'Janjang', 'Berat (kg)', 'Kesehatan']
+    
+    st.dataframe(display_df, use_container_width=True, height=400)
+    
     # FOOTER
-    # ============================
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #64748b; padding: 2rem;">
         <h3>🌴 Sawit-ID System</h3>
         <p>Dashboard Monitoring Perkebunan Kelapa Sawit</p>
-        <p style="font-size: 0.9rem; margin-top: 1rem;">
-        <strong>Data Sources:</strong> RFID (ID) + IoT Sensors (pH, Kelembaban) + Manual Input (Panen, Kondisi)
-        </p>
     </div>
     """, unsafe_allow_html=True)
 
