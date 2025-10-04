@@ -70,12 +70,26 @@ def load_data():
     return df
 
 def create_fallback_data():
-    np.random.seed(42)
+    """Fallback with FIXED coordinates (tidak random)"""
+    # Data sudah ditentukan, tidak pakai random
     data = []
     pohon_id = 1
     clusters = ['A'] * 35 + ['B'] * 35 + ['C'] * 30
     spacing = 9
     row_offset = spacing * 0.866
+    
+    # Pre-defined values untuk konsistensi
+    ph_values_A = [6.4, 6.7, 6.2, 6.8, 6.5, 6.9, 6.3, 6.6, 6.1, 6.7] * 4  # Repeat pattern
+    kelembaban_A = [35, 34, 32, 36, 33, 37, 31, 35, 30, 34] * 4
+    janjang_A = [21, 20, 19, 22, 20, 23, 18, 21, 19, 22] * 4
+    
+    ph_values_B = [6.1, 5.9, 6.3, 5.7, 6.2, 5.8, 6.4, 6.0, 5.6, 6.2] * 4
+    kelembaban_B = [31, 29, 32, 28, 33, 30, 34, 31, 29, 32] * 4
+    janjang_B = [16, 15, 18, 14, 17, 16, 19, 15, 14, 17] * 4
+    
+    ph_values_C = [5.3, 5.0, 5.5, 4.9, 5.4, 5.1, 5.6, 5.2, 4.8, 5.3] * 3
+    kelembaban_C = [26, 24, 27, 23, 26, 25, 28, 24, 22, 27] * 3
+    janjang_C = [11, 9, 12, 8, 11, 10, 13, 9, 8, 12] * 3
     
     for i, cluster in enumerate(clusters):
         row = i // 10
@@ -83,25 +97,28 @@ def create_fallback_data():
         
         if cluster == 'A':
             base_x, base_y = 50, 200
-            ph = round(np.random.uniform(6.0, 6.9), 1)
-            kelembaban = np.random.randint(30, 38)
-            janjang = np.random.randint(18, 24)
-            berat = np.random.randint(42, 55)
+            idx = i
+            ph = ph_values_A[idx]
+            kelembaban = kelembaban_A[idx]
+            janjang = janjang_A[idx]
+            berat = janjang * 2 + 5  # Formula tetap
             penyakit = 0
         elif cluster == 'B':
             base_x, base_y = 50, 170
-            ph = round(np.random.uniform(5.5, 6.5), 1)
-            kelembaban = np.random.randint(28, 35)
-            janjang = np.random.randint(14, 20)
-            berat = np.random.randint(35, 48)
-            penyakit = np.random.choice([0, 1], p=[0.8, 0.2])
+            idx = i - 35
+            ph = ph_values_B[idx]
+            kelembaban = kelembaban_B[idx]
+            janjang = janjang_B[idx]
+            berat = janjang * 2 + 5
+            penyakit = 1 if idx % 5 == 3 else 0  # Pattern tetap
         else:
             base_x, base_y = 50, 140
-            ph = round(np.random.uniform(4.8, 5.8), 1)
-            kelembaban = np.random.randint(22, 30)
-            janjang = np.random.randint(8, 15)
-            berat = np.random.randint(20, 38)
-            penyakit = np.random.choice([0, 1], p=[0.4, 0.6])
+            idx = i - 70
+            ph = ph_values_C[idx]
+            kelembaban = kelembaban_C[idx]
+            janjang = janjang_C[idx]
+            berat = janjang * 2 + 5
+            penyakit = 1 if idx % 3 != 2 else 0  # Pattern tetap
         
         x = base_x + (col * spacing)
         if row % 2 == 1:
