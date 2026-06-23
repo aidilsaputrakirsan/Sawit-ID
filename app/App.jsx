@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import {
   AppShell,
   Burger,
@@ -10,12 +10,15 @@ import {
   Badge,
   Stack,
   ScrollArea,
+  Loader,
+  Center,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
   IconLayoutDashboard,
   IconMapPin,
   IconScan,
+  IconDeviceCctv,
   IconChartHistogram,
   IconShieldCheck,
   IconLeaf,
@@ -29,10 +32,14 @@ import Detection from "./sections/Detection.jsx";
 import Baci from "./sections/Baci.jsx";
 import Intervention from "./sections/Intervention.jsx";
 
+// Dimuat terpisah: TensorFlow.js besar, jangan masuk bundle utama.
+const LiveDetection = lazy(() => import("./sections/LiveDetection.jsx"));
+
 const NAV = [
   { key: "ringkasan", label: "Ringkasan", icon: IconLayoutDashboard, Comp: Overview },
   { key: "hotspot", label: "Peta Hotspot", icon: IconMapPin, Comp: HotspotMap },
   { key: "deteksi", label: "Deteksi AI", icon: IconScan, Comp: Detection },
+  { key: "live", label: "Uji Deteksi (Live)", icon: IconDeviceCctv, Comp: LiveDetection },
   { key: "baci", label: "Evaluasi BACI", icon: IconChartHistogram, Comp: Baci },
   { key: "intervensi", label: "Intervensi", icon: IconShieldCheck, Comp: Intervention },
 ];
@@ -136,7 +143,15 @@ export default function App() {
 
       <AppShell.Main>
         <Box style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <Current />
+          <Suspense
+            fallback={
+              <Center h={360}>
+                <Loader color="sawit" />
+              </Center>
+            }
+          >
+            <Current />
+          </Suspense>
         </Box>
       </AppShell.Main>
     </AppShell>
