@@ -11,6 +11,17 @@ Penelitian ini membangun sistem deteksi dini dan pengendalian non-kimiawi terhad
 
 **Inti kebaruan:** menggabungkan AI + peta hotspot untuk **mengarahkan pengendalian non-kimiawi tupai secara presisi** — area yang masih sedikit diteliti, berbeda dari pengendalian tupai yang umumnya merata dan kurang terdokumentasi.
 
+**Pipeline sistem secara ringkas:**
+
+```mermaid
+flowchart LR
+    P1(["📷 Akuisisi<br/>kamera tajuk & batang"]) --> P2(["🧠 Deteksi AI<br/>tupai & gejala buah"])
+    P2 --> P3(["🗺️ Peta hotspot<br/>pohon/blok prioritas"])
+    P3 --> P4(["🛡️ Intervensi terarah<br/>barrier · pruning · perangkap"])
+    P4 --> P5(["📊 Evaluasi BACI<br/>% buah tergerek turun?"])
+    P5 -. "umpan balik / adaptif" .-> P2
+```
+
 ---
 
 ### 2. Latar Belakang & Celah Penelitian (Research Gap)
@@ -65,29 +76,31 @@ Pertanyaan turunan:
 
 ### 6. Kerangka Konseptual (Conceptual Framework)
 
-```
-[ Input / Variabel Bebas ]
-  - Sistem AI-IoT (kamera siang hari di tajuk & batang)
-  - Deteksi & klasifikasi tupai + gejala gerekan buah (Computer Vision)
-  - Peta hotspot pohon/blok (Analisis Spasial)
-  - Intervensi non-kimiawi terarah (barrier batang, pruning, perangkap)
-            |
-            v
-[ Proses ]
-  Deteksi dini -> Pemetaan prioritas -> Penempatan presisi -> Pembelajaran adaptif
-            |
-            v
-[ Output / Variabel Terikat ]
-  - Penurunan indeks aktivitas tupai
-  - Penurunan % buah tergerek (buah muda & hampir matang)
-  - Akurasi model deteksi
-            |
-            v
-[ Outcome ]
-  Pengendalian non-kimiawi yang efektif, hemat, & berkelanjutan untuk kebun rakyat
-```
+```mermaid
+flowchart TD
+    subgraph INPUT["INPUT / Variabel Bebas"]
+        A1["Sistem AI-IoT<br/>(kamera siang hari:<br/>tajuk & batang)"]
+        A2["Deteksi & klasifikasi tupai<br/>+ gejala gerekan buah<br/>(Computer Vision)"]
+        A3["Peta hotspot pohon/blok<br/>(Analisis Spasial)"]
+        A4["Intervensi non-kimiawi terarah<br/>(barrier, pruning, perangkap)"]
+    end
 
-*(Variabel kontrol/pengganggu yang dicatat: musim/curah hujan, fase pembuahan, ketersediaan pakan alami di sekitar kebun, kondisi gawangan & kerapatan tajuk, keberadaan predator alami.)*
+    subgraph PROSES["PROSES"]
+        B1["Deteksi dini"] --> B2["Pemetaan prioritas"] --> B3["Penempatan presisi"] --> B4["Pembelajaran adaptif"]
+    end
+
+    subgraph OUTPUT["OUTPUT / Variabel Terikat"]
+        C1["Penurunan indeks<br/>aktivitas tupai"]
+        C2["Penurunan % buah tergerek<br/>(muda & hampir matang)"]
+        C3["Akurasi model deteksi"]
+    end
+
+    OUTCOME["OUTCOME:<br/>Pengendalian non-kimiawi yang efektif,<br/>hemat & berkelanjutan untuk kebun rakyat"]
+
+    INPUT --> PROSES --> OUTPUT --> OUTCOME
+
+    KONTROL["Variabel kontrol/pengganggu:<br/>musim & curah hujan, fase pembuahan,<br/>pakan alami, kerapatan tajuk, predator alami"] -.-> PROSES
+```
 
 ---
 
@@ -102,9 +115,36 @@ Desain **Before–After–Control–Impact** dipilih karena perbandingan "sebelu
 
 Efek sistem = perbedaan perubahan (After−Before) antara plot perlakuan dan kontrol. Idealnya ada **replikasi** beberapa pasang plot agar hasil tidak bergantung pada satu lokasi.
 
+```mermaid
+flowchart LR
+    subgraph IMPACT["Plot Perlakuan (Impact)"]
+        I1["BEFORE<br/>Baseline:<br/>aktivitas tupai +<br/>% buah tergerek"] --> I2["AFTER<br/>Sistem AI-IoT +<br/>intervensi terarah"]
+    end
+    subgraph CONTROL["Plot Kontrol (Control)"]
+        K1["BEFORE<br/>Baseline"] --> K2["AFTER<br/>Praktik petani biasa"]
+    end
+    I2 --> EFEK{{"Efek sistem =<br/>(After − Before) Perlakuan<br/>−<br/>(After − Before) Kontrol"}}
+    K2 --> EFEK
+```
+
 ---
 
 ### 8. Alur Penelitian (Tahapan)
+
+```mermaid
+flowchart TD
+    T1["1. Persiapan & baseline<br/>plot perlakuan vs kontrol"]
+    T2["2. Akuisisi data lapangan<br/>kamera tajuk & batang + GPS"]
+    T3["3. Pembangunan dataset<br/>anotasi tupai & gejala"]
+    T4["4. Pelatihan & validasi model AI<br/>Precision, Recall, F1, mAP"]
+    T5["5. Analisis spasial<br/>Kernel Density / Getis-Ord Gi*"]
+    T6["6. Intervensi terarah<br/>barrier, pruning, perangkap di hotspot"]
+    T7["7. Monitoring periode After<br/>kontinu sepanjang siklus buah"]
+    T8["8. Evaluasi BACI & pembelajaran"]
+
+    T1 --> T2 --> T3 --> T4 --> T5 --> T6 --> T7 --> T8
+    T8 -. "pembaruan model & rekomendasi" .-> T4
+```
 
 1. **Persiapan & baseline** — pemilihan & pemetaan blok, penetapan plot perlakuan vs kontrol, pengukuran % buah tergerek & indeks aktivitas tupai awal.
 2. **Akuisisi data lapangan** — pemasangan kamera yang diarahkan ke **tandan di tajuk dan batang** (deteksi siang hari); pencatatan koordinat GPS tiap pohon/temuan.
