@@ -8,7 +8,7 @@
 
 export const SITE = {
   nama: "Kebun Rakyat Mitra — Blok Tanjung",
-  luasHa: 12.4,
+  luasHa: 6.0,
   pohonContoh: 168,
   kameraTajuk: 14,
   kameraBatang: 8,
@@ -100,16 +100,28 @@ export const DETEKSI = [
 /* ---------- 6. Peta kebun & hotspot (viewBox 820 x 560) ----------
    Koordinat di bawah memakai ruang kanvas 820 x 560 (mudah ditata).
    Untuk peta Leaflet, titik diproyeksikan ke lintang/bujur asli melalui
-   toLatLng(). Lokasi pusat dipilih di kawasan sawit rakyat Riau
-   (contoh; ganti dengan koordinat lokasi mitra sesungguhnya). */
-export const GEO_CENTER = [0.5240, 101.4350]; // [lintang, bujur]
-const SPAN_LNG = 0.0052; // rentang bujur untuk lebar 820 px (~580 m)
-const SPAN_LAT = 0.0036; // rentang lintang untuk tinggi 560 px (~400 m)
+   toLatLng(). Lokasi pusat: Samboja, Kutai Kartanegara, Kalimantan Timur. */
+export const GEO_CENTER = [-0.9638837985460129, 116.98234323216602]; // [lintang, bujur]
+const SPAN_LNG = 0.00345; // rentang bujur (disetel agar luas kebun ~6 ha)
+const SPAN_LAT = 0.00239; // rentang lintang (disetel agar luas kebun ~6 ha)
 
-// proyeksi sederhana kanvas -> [lintang, bujur]
+// rotasi seluruh tata letak (derajat). positif = putar ke kiri (CCW).
+const ROTATION_DEG = -90;
+
+// proyeksi sederhana kanvas -> [lintang, bujur], dengan rotasi di sekitar pusat
 export function toLatLng([x, y]) {
-  const lng = GEO_CENTER[1] + ((x - 410) / 820) * SPAN_LNG;
-  const lat = GEO_CENTER[0] - ((y - 280) / 560) * SPAN_LAT; // y ke bawah = lintang turun
+  // 1) geser ke pusat kanvas, normalisasi ke -0.5..0.5
+  const nx = (x - 410) / 820;
+  const ny = (y - 280) / 560;
+  // 2) putar di sekitar pusat
+  const rad = (ROTATION_DEG * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const rx = nx * cos - ny * sin;
+  const ry = nx * sin + ny * cos;
+  // 3) proyeksikan ke lintang/bujur
+  const lng = GEO_CENTER[1] + rx * SPAN_LNG;
+  const lat = GEO_CENTER[0] - ry * SPAN_LAT; // y ke bawah = lintang turun
   return [lat, lng];
 }
 
@@ -123,20 +135,27 @@ export const HUTAN = [
   [70, 120], [400, 78], [752, 110], [752, 40], [70, 40],
 ];
 
-// pohon contoh: grid ringan dalam batas; sebagian jadi prioritas hotspot
+// pohon contoh: sebaran tak beraturan (grid + jitter) dalam batas
 export const POHON = (() => {
   const out = [];
   let id = 0;
+  // pseudo-random terdeterminasi (stabil antar-render) dari seed
+  const rnd = (s) => {
+    const v = Math.sin(s * 127.1 + 311.7) * 43758.5453;
+    return v - Math.floor(v);
+  };
   for (let r = 0; r < 7; r++) {
     for (let c = 0; c < 11; c++) {
-      const x = 110 + c * 58 + (r % 2) * 18;
-      const y = 130 + r * 52;
-      if (x > 740 || y > 470) continue;
+      const seed = r * 11 + c + 1;
+      // posisi grid + jitter acak agar tidak terlihat rapi
+      const x = 110 + c * 58 + (r % 2) * 18 + (rnd(seed) - 0.5) * 42;
+      const y = 130 + r * 52 + (rnd(seed + 99) - 0.5) * 42;
+      if (x < 70 || x > 740 || y < 110 || y > 470) continue;
       // intensitas hotspot: tinggi di dekat tepi hutan (y kecil) dan sisi kanan-atas
       const dekatHutan = Math.max(0, 1 - (y - 120) / 240);
       const kanan = Math.max(0, (x - 380) / 380) * 0.5;
       let g = Math.min(1, dekatHutan * 0.85 + kanan * 0.5 + ((id * 7) % 5) / 22);
-      out.push({ id: "P" + (++id), x, y, gi: +g.toFixed(2) });
+      out.push({ id: "P" + (++id), x: +x.toFixed(1), y: +y.toFixed(1), gi: +g.toFixed(2) });
     }
   }
   return out;
