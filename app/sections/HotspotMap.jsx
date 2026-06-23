@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Card,
   Grid,
@@ -8,133 +8,210 @@ import {
   Badge,
   Box,
   Divider,
-  Tooltip,
+  Switch,
+  Tooltip as MTooltip,
 } from "@mantine/core";
+import {
+  MapContainer,
+  TileLayer,
+  Polygon,
+  CircleMarker,
+  Marker,
+  Tooltip,
+  Popup,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import "leaflet.heat";
+import "leaflet/dist/leaflet.css";
 
 import { SectionTitle, MetaRow } from "../components/ui.jsx";
 import {
   BOUNDARY,
-  HUTAN,
   POHON,
   KAMERA,
   PRIORITAS,
   STAT,
   giColor,
+  toLatLng,
+  GEO_CENTER,
 } from "../data.js";
 
-const poly = (pts) => pts.map((p) => p.join(",")).join(" ");
+/* ikon kamera berbentuk kotak (divIcon → tanpa aset gambar) */
+const camIcon = (color) =>
+  L.divIcon({
+    className: "cam-marker",
+    html: `<div style="width:14px;height:14px;border:2.5px solid ${color};background:#fff;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.35)"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+
+/* layer panas (leaflet.heat) — dikelola manual via useMap */
+function HeatLayer({ points, show }) {
+  const map = useMap();
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) {
+      map.removeLayer(ref.current);
+      ref.current = null;
+    }
+    if (!show) return undefined;
+    ref.current = L.heatLayer(points, {
+      radius: 34,
+      blur: 24,
+      minOpacity: 0.25,
+      max: 1.0,
+      gradient: {
+        0.2: "#7fb583",
+        0.4: "#a9c46b",
+        0.6: "#e6b94e",
+        0.8: "#e08a3c",
+        1.0: "#d35a3c",
+      },
+    }).addTo(map);
+    return () => {
+      if (ref.current) {
+        map.removeLayer(ref.current);
+        ref.current = null;
+      }
+    };
+  }, [map, points, show]);
+  return null;
+}
 
 export default function HotspotMap() {
-  const [hover, setHover] = useState(null);
+  const [showHeat, setShowHeat] = useState(true);
+  const [showPohon, setShowPohon] = useState(true);
+
+  const boundaryLL = useMemo(() => BOUNDARY.map(toLatLng), []);
+  const pohonLL = useMemo(
+    () => POHON.map((p) => ({ ...p, ll: toLatLng([p.x, p.y]) })),
+    []
+  );
+  const kameraLL = useMemo(
+    () => KAMERA.map((k) => ({ ...k, ll: toLatLng([k.x, k.y]) })),
+    []
+  );
+  // titik panas: pohon sebagai sumber, intensitas = skor Gi*
+  const heatPoints = useMemo(
+    () => pohonLL.map((p) => [p.ll[0], p.ll[1], Math.max(0.05, p.gi)]),
+    [pohonLL]
+  );
 
   return (
     <>
       <SectionTitle
         title="Peta Hotspot Spasial"
-        subtitle="Kepadatan aktivitas tupai per pohon (Getis-Ord Gi*) untuk mengarahkan intervensi pada blok prioritas, bukan merata."
+        subtitle="Peta interaktif (Leaflet/OpenStreetMap) dengan layer kepadatan aktivitas tupai untuk mengarahkan intervensi pada blok prioritas, bukan merata."
       />
 
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, lg: 8 }}>
           <Card padding="lg">
-            <Group justify="space-between" mb="sm">
+            <Group justify="space-between" mb="sm" wrap="nowrap">
               <Box>
                 <Text fw={620} c="#1f2a26">
-                  Sebaran kebun — Blok Tanjung
+                  Kebun Rakyat Mitra — Blok Tanjung
                 </Text>
                 <Text fz="xs" c="dimmed">
-                  Tepi hutan di sisi utara menjadi sumber tekanan tupai tertinggi
+                  Kepadatan Getis-Ord Gi* dilapis di atas peta dasar
                 </Text>
               </Box>
-              <Group gap="md">
-                <LegendDot color={STAT.online} label="Kamera online" />
-                <LegendDot color={STAT.warning} label="Perlu perhatian" />
-                <LegendDot color={STAT.offline} label="Terputus" />
+              <Group gap="md" wrap="nowrap">
+                <Switch
+                  size="xs"
+                  checked={showHeat}
+                  onChange={(e) => setShowHeat(e.currentTarget.checked)}
+                  label="Heatmap"
+                  color="sawit"
+                />
+                <Switch
+                  size="xs"
+                  checked={showPohon}
+                  onChange={(e) => setShowPohon(e.currentTarget.checked)}
+                  label="Pohon"
+                  color="sawit"
+                />
               </Group>
             </Group>
 
             <Box
               style={{
-                background: "#fbfcfb",
-                border: "1px solid #eef2ef",
+                height: 440,
                 borderRadius: 12,
                 overflow: "hidden",
+                border: "1px solid #eef2ef",
               }}
             >
-              <svg viewBox="0 0 820 560" style={{ width: "100%", display: "block" }}>
-                {/* zona hutan */}
-                <polygon points={poly(HUTAN)} fill="#e8f0e4" />
-                <text x={400} y={28} textAnchor="middle" fontSize="13" fill="#6f8a72" fontWeight="600">
-                  TEPI HUTAN — SUMBER TUPAI
-                </text>
-
-                {/* batas kebun */}
-                <polygon
-                  points={poly(BOUNDARY)}
-                  fill="#f3f8f2"
-                  stroke="#cfe0d0"
-                  strokeWidth="2"
+              <MapContainer
+                bounds={boundaryLL}
+                boundsOptions={{ padding: [24, 24] }}
+                center={GEO_CENTER}
+                zoom={17}
+                scrollWheelZoom
+                style={{ height: "100%", width: "100%" }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  maxZoom={19}
                 />
 
-                {/* pohon contoh: warna = intensitas hotspot Gi* */}
-                {POHON.map((p) => {
-                  const r = 8 + p.gi * 7;
-                  return (
-                    <g key={p.id}>
-                      {p.gi >= 0.55 && (
-                        <circle cx={p.x} cy={p.y} r={r + 12} fill={giColor(p.gi)} opacity={0.16} />
-                      )}
-                      <circle
-                        cx={p.x}
-                        cy={p.y}
-                        r={r}
-                        fill={giColor(p.gi)}
-                        opacity={0.85}
-                        stroke="#ffffff"
-                        strokeWidth="1.5"
-                        onMouseEnter={() => setHover({ ...p, kind: "pohon" })}
-                        onMouseLeave={() => setHover(null)}
-                        style={{ cursor: "pointer" }}
-                      />
-                    </g>
-                  );
-                })}
+                {/* batas kebun */}
+                <Polygon
+                  positions={boundaryLL}
+                  pathOptions={{
+                    color: "#499b57",
+                    weight: 2,
+                    fillColor: "#6cae77",
+                    fillOpacity: 0.08,
+                  }}
+                />
+
+                <HeatLayer points={heatPoints} show={showHeat} />
+
+                {/* pohon contoh */}
+                {showPohon &&
+                  pohonLL.map((p) => (
+                    <CircleMarker
+                      key={p.id}
+                      center={p.ll}
+                      radius={4 + p.gi * 5}
+                      pathOptions={{
+                        color: "#ffffff",
+                        weight: 1,
+                        fillColor: giColor(p.gi),
+                        fillOpacity: 0.9,
+                      }}
+                    >
+                      <Tooltip direction="top" offset={[0, -4]}>
+                        <b>{p.id}</b> · Gi* {p.gi.toFixed(2)}
+                      </Tooltip>
+                    </CircleMarker>
+                  ))}
 
                 {/* kamera */}
-                {KAMERA.map((k) => (
-                  <g
-                    key={k.id}
-                    onMouseEnter={() => setHover({ ...k, kind: "kamera" })}
-                    onMouseLeave={() => setHover(null)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <rect
-                      x={k.x - 8}
-                      y={k.y - 8}
-                      width={16}
-                      height={16}
-                      rx={4}
-                      fill="#ffffff"
-                      stroke={STAT[k.status]}
-                      strokeWidth="2.5"
-                    />
-                    <circle cx={k.x} cy={k.y} r={3} fill={STAT[k.status]} />
-                  </g>
+                {kameraLL.map((k) => (
+                  <Marker key={k.id} position={k.ll} icon={camIcon(STAT[k.status])}>
+                    <Popup>
+                      <b>{k.id}</b>
+                      <br />
+                      Kamera {k.jenis} · Blok {k.blok}
+                      <br />
+                      Status: {k.status}
+                    </Popup>
+                  </Marker>
                 ))}
-              </svg>
+              </MapContainer>
             </Box>
 
             <Group justify="space-between" mt="sm">
-              <Group gap="lg">
-                <GiLegend />
+              <GiLegend />
+              <Group gap="md">
+                <LegendDot color={STAT.online} label="Kamera online" square />
+                <LegendDot color={STAT.warning} label="Perhatian" square />
+                <LegendDot color={STAT.offline} label="Terputus" square />
               </Group>
-              {hover && (
-                <Badge variant="light" color="gray" size="lg">
-                  {hover.kind === "pohon"
-                    ? `${hover.id} · Gi* ${hover.gi}`
-                    : `${hover.id} · ${hover.jenis} · ${hover.status}`}
-                </Badge>
-              )}
             </Group>
           </Card>
         </Grid.Col>
@@ -151,6 +228,7 @@ export default function HotspotMap() {
               <Stack gap="sm">
                 <MetaRow label="Metode" value="Getis-Ord Gi*" />
                 <MetaRow label="Pendukung" value="Kernel Density" />
+                <MetaRow label="Peta dasar" value="OpenStreetMap" />
                 <MetaRow label="Pohon dianalisis" value={POHON.length} />
                 <MetaRow
                   label="Hotspot signifikan"
@@ -205,10 +283,18 @@ export default function HotspotMap() {
   );
 }
 
-function LegendDot({ color, label }) {
+function LegendDot({ color, label, square }) {
   return (
     <Group gap={6} wrap="nowrap">
-      <Box w={10} h={10} style={{ background: color, borderRadius: 3 }} />
+      <Box
+        w={10}
+        h={10}
+        style={{
+          background: square ? "#fff" : color,
+          border: square ? `2px solid ${color}` : "none",
+          borderRadius: square ? 3 : "50%",
+        }}
+      />
       <Text fz="xs" c="dimmed">
         {label}
       </Text>
@@ -231,9 +317,9 @@ function GiLegend() {
       </Text>
       <Group gap={0}>
         {stops.map((s, i) => (
-          <Tooltip key={i} label={s.l || "—"} disabled={!s.l} withArrow>
+          <MTooltip key={i} label={s.l || "—"} disabled={!s.l} withArrow>
             <Box w={20} h={10} style={{ background: s.c }} />
-          </Tooltip>
+          </MTooltip>
         ))}
       </Group>
     </Group>

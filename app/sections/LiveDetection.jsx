@@ -26,30 +26,34 @@ import {
 } from "@tabler/icons-react";
 
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
+import * as mobilenet from "@tensorflow-models/mobilenet";
 import "@tensorflow/tfjs";
 
 import { SectionTitle, MetaRow } from "../components/ui.jsx";
 
-/* Kelas COCO yang di-remap menjadi "tupai" (simulasi).
-   Objek hewan/berbulu paling masuk akal untuk demo deteksi tupai. */
-const KELAS_TUPAI = new Set([
-  "cat",
-  "dog",
-  "bird",
-  "bear",
-  "teddy bear",
-  "sheep",
-  "horse",
-  "cow",
-]);
+/* Kata kunci famili tupai (Sciuridae) pada label ImageNet/MobileNet.
+   ImageNet memuat antara lain "fox squirrel" dan "marmot" (sama-sama Sciuridae). */
+const SCIURIDAE = ["squirrel", "marmot", "chipmunk", "prairie", "bajing", "tupai"];
 
-const WARNA_TUPAI = "#499b57";
-const WARNA_OBJEK = "#3b82c4";
+const WARNA_TUPAI = "#499b57"; // famili tupai
+const WARNA_OBJEK = "#3b82c4"; // objek/spesies lain
+const MAKS_KLASIFIKASI = 3; // jumlah kotak terbesar yang diberi label spesies / frame
+
+function isSciuridae(name) {
+  const n = name.toLowerCase();
+  return SCIURIDAE.some((k) => n.includes(k));
+}
+function rapiNama(name) {
+  // ImageNet sering "fox squirrel, eastern fox squirrel, ..." → ambil bagian pertama
+  return name.split(",")[0];
+}
 
 export default function LiveDetection() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const modelRef = useRef(null);
+  const cropRef = useRef(null); // kanvas potong untuk klasifikasi
+  const cocoRef = useRef(null);
+  const netRef = useRef(null);
   const rafRef = useRef(0);
   const streamRef = useRef(null);
   const confRef = useRef(0.55);
@@ -64,7 +68,6 @@ export default function LiveDetection() {
   const [count, setCount] = useState({ tupai: 0, objek: 0 });
   const [log, setLog] = useState([]);
 
-  // jaga ref selaras dengan state agar loop deteksi membaca nilai terbaru
   useEffect(() => void (confRef.current = conf / 100), [conf]);
   useEffect(() => void (mirrorRef.current = mirror), [mirror]);
 
@@ -76,19 +79,19 @@ export default function LiveDetection() {
     }
     const cv = canvasRef.current;
     if (cv) cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
-    setPhase(modelRef.current ? "ready" : "idle");
+    setPhase(cocoRef.current ? "ready" : "idle");
     setFps(0);
     setCount({ tupai: 0, objek: 0 });
   }, []);
 
-  // bersihkan saat komponen dilepas
   useEffect(() => () => stop(), [stop]);
 
-  const detectLoop = useCallback(() => {
+  const detectLoop = useCallback(async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const model = modelRef.current;
-    if (!video || !canvas || !model || video.readyState < 2) {
+    const coco = cocoRef.current;
+    const net = netRef.current;
+    if (!video || !canvas || !coco || video.readyState < 2) {
       rafRef.current = requestAnimationFrame(detectLoop);
       return;
     }
@@ -99,93 +102,119 @@ export default function LiveDetection() {
     if (canvas.height !== h) canvas.height = h;
     const ctx = canvas.getContext("2d");
 
-    model.detect(video).then((preds) => {
-      ctx.clearRect(0, 0, w, h);
-      ctx.save();
-      if (mirrorRef.current) {
-        ctx.translate(w, 0);
-        ctx.scale(-1, 1);
-      }
-
-      let nT = 0;
-      let nO = 0;
-      const hits = [];
-
-      preds.forEach((p) => {
-        if (p.score < confRef.current) return;
-        const isTupai = KELAS_TUPAI.has(p.class);
-        const color = isTupai ? WARNA_TUPAI : WARNA_OBJEK;
-        const label = isTupai
-          ? "Tupai (simulasi)"
-          : p.class;
-        if (isTupai) nT++;
-        else nO++;
-        hits.push({ label, score: p.score, isTupai, klas: p.class });
-
-        const [x, y, bw, bh] = p.bbox;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = color;
-        ctx.strokeRect(x, y, bw, bh);
-
-        // label chip (gambar tanpa cermin agar teks terbaca)
-        ctx.save();
-        if (mirrorRef.current) {
-          ctx.translate(w, 0);
-          ctx.scale(-1, 1);
-        }
-        const tx = mirrorRef.current ? w - x - bw : x;
-        const txt = `${label} ${(p.score * 100).toFixed(0)}%`;
-        ctx.font = "600 15px Inter, sans-serif";
-        const tw = ctx.measureText(txt).width + 14;
-        ctx.fillStyle = color;
-        ctx.fillRect(tx, Math.max(0, y - 22), tw, 22);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(txt, tx + 7, Math.max(13, y - 6));
-        ctx.restore();
-      });
-      ctx.restore();
-
-      setCount({ tupai: nT, objek: nO });
-
-      // log: catat deteksi tupai (throttle ringan via state append unik)
-      if (hits.some((x) => x.isTupai)) {
-        const top = hits
-          .filter((x) => x.isTupai)
-          .sort((a, b) => b.score - a.score)[0];
-        const stamp = new Date().toLocaleTimeString("id-ID", { hour12: false });
-        setLog((prev) => {
-          if (prev[0] && prev[0].score === top.score && prev[0].t === stamp)
-            return prev;
-          return [
-            { t: stamp, klas: top.klas, score: top.score },
-            ...prev,
-          ].slice(0, 12);
-        });
-      }
-
-      // FPS
-      const f = fpsRef.current;
-      f.frames++;
-      const now = performance.now();
-      if (now - f.last >= 1000) {
-        setFps(f.frames);
-        f.frames = 0;
-        f.last = now;
-      }
-
+    // 1. deteksi objek (kotak) dengan COCO-SSD
+    let preds = [];
+    try {
+      preds = await coco.detect(video);
+    } catch {
       rafRef.current = requestAnimationFrame(detectLoop);
+      return;
+    }
+    const kept = preds.filter((p) => p.score >= confRef.current);
+
+    // 2. klasifikasi spesies (MobileNet) pada kotak terbesar
+    const ranked = [...kept].sort(
+      (a, b) => b.bbox[2] * b.bbox[3] - a.bbox[2] * a.bbox[3]
+    );
+    const labelByPred = new Map();
+    if (net) {
+      const crop = cropRef.current;
+      const cctx = crop.getContext("2d");
+      for (const p of ranked.slice(0, MAKS_KLASIFIKASI)) {
+        const [x, y, bw, bh] = p.bbox;
+        if (bw < 24 || bh < 24) continue;
+        cctx.clearRect(0, 0, 224, 224);
+        cctx.drawImage(video, x, y, bw, bh, 0, 0, 224, 224);
+        try {
+          const res = await net.classify(crop, 1);
+          if (res && res[0]) labelByPred.set(p, res[0]);
+        } catch {
+          /* abaikan satu frame */
+        }
+      }
+    }
+
+    // 3. gambar kotak + label
+    ctx.clearRect(0, 0, w, h);
+    let nT = 0;
+    let nO = 0;
+    const tupaiHits = [];
+
+    kept.forEach((p) => {
+      const sp = labelByPred.get(p); // {className, probability} | undefined
+      const spName = sp ? rapiNama(sp.className) : null;
+      const tupai = sp ? isSciuridae(sp.className) : false;
+      const color = tupai ? WARNA_TUPAI : WARNA_OBJEK;
+
+      if (tupai) {
+        nT++;
+        tupaiHits.push({ name: spName, score: sp.probability });
+      } else nO++;
+
+      // teks label: pakai nama spesies bila ada, jika tidak pakai kelas COCO
+      const namaTampil = spName || p.class;
+      const skor = sp ? sp.probability : p.score;
+      const txt = `${namaTampil} ${(skor * 100).toFixed(0)}%`;
+
+      const [x, y, bw, bh] = p.bbox;
+      // koordinat layar (perhitungkan cermin)
+      const dx = mirrorRef.current ? w - x - bw : x;
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(dx, y, bw, bh);
+
+      ctx.font = "600 15px Inter, sans-serif";
+      const tw = ctx.measureText(txt).width + 14;
+      ctx.fillStyle = color;
+      ctx.fillRect(dx, Math.max(0, y - 22), tw, 22);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(txt, dx + 7, Math.max(13, y - 6));
     });
+
+    setCount({ tupai: nT, objek: nO });
+
+    if (tupaiHits.length) {
+      const top = tupaiHits.sort((a, b) => b.score - a.score)[0];
+      const stamp = new Date().toLocaleTimeString("id-ID", { hour12: false });
+      setLog((prev) => {
+        if (prev[0] && prev[0].name === top.name && prev[0].t === stamp)
+          return prev;
+        return [{ t: stamp, name: top.name, score: top.score }, ...prev].slice(0, 12);
+      });
+    }
+
+    const f = fpsRef.current;
+    f.frames++;
+    const now = performance.now();
+    if (now - f.last >= 1000) {
+      setFps(f.frames);
+      f.frames = 0;
+      f.last = now;
+    }
+
+    rafRef.current = requestAnimationFrame(detectLoop);
   }, []);
 
   const start = useCallback(async () => {
     setError(null);
     try {
-      // 1. muat model bila belum
-      if (!modelRef.current) {
+      if (!cocoRef.current || !netRef.current) {
         setPhase("loadingModel");
-        modelRef.current = await cocoSsd.load({ base: "lite_mobilenet_v2" });
+        const [c, n] = await Promise.all([
+          cocoRef.current ?? cocoSsd.load({ base: "lite_mobilenet_v2" }),
+          netRef.current ?? mobilenet.load({ version: 2, alpha: 1.0 }),
+        ]);
+        cocoRef.current = c;
+        netRef.current = n;
+        // siapkan kanvas potong sekali
+        if (!cropRef.current) {
+          const cv = document.createElement("canvas");
+          cv.width = 224;
+          cv.height = 224;
+          cropRef.current = cv;
+        }
       }
-      // 2. minta kamera
       setPhase("ready");
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: 640, height: 480 },
@@ -206,7 +235,7 @@ export default function LiveDetection() {
         msg = "Tidak ada kamera yang terdeteksi pada perangkat ini.";
       else if (e?.message) msg = e.message;
       setError(msg);
-      setPhase(modelRef.current ? "ready" : "error");
+      setPhase(cocoRef.current ? "ready" : "error");
     }
   }, [detectLoop]);
 
@@ -217,7 +246,7 @@ export default function LiveDetection() {
     <>
       <SectionTitle
         title="Uji Deteksi (Live)"
-        subtitle="Simulasi deteksi tupai real-time dari kamera. Inferensi berjalan di perangkat (edge) — citra tidak dikirim ke server."
+        subtitle="Deteksi objek (COCO-SSD) digabung klasifikasi spesies (MobileNet/ImageNet). Famili tupai (Sciuridae) ditandai khusus. Inferensi berjalan di perangkat."
         right={
           <Badge size="lg" variant="light" color={running ? "sawit" : "gray"}>
             {running ? "Kamera aktif" : "Kamera mati"}
@@ -262,7 +291,6 @@ export default function LiveDetection() {
                 }}
               />
 
-              {/* overlay status saat belum berjalan */}
               {!running && (
                 <Box
                   style={{
@@ -282,7 +310,7 @@ export default function LiveDetection() {
                     <>
                       <Loader color="sawit" />
                       <Text fz="sm" c="#cdd8d0">
-                        Memuat model deteksi (COCO-SSD)…
+                        Memuat model (COCO-SSD + MobileNet)…
                       </Text>
                     </>
                   ) : (
@@ -290,21 +318,17 @@ export default function LiveDetection() {
                       <ThemeIcon size={54} radius="xl" variant="light" color="sawit">
                         <IconCamera size={28} stroke={1.6} />
                       </ThemeIcon>
-                      <Text fz="sm" c="#cdd8d0" maw={320}>
-                        Aktifkan kamera untuk memulai simulasi deteksi.
-                        Model dimuat sekali, lalu berjalan langsung di browser.
+                      <Text fz="sm" c="#cdd8d0" maw={340}>
+                        Aktifkan kamera untuk memulai deteksi. Model dimuat sekali,
+                        lalu berjalan langsung di browser.
                       </Text>
                     </>
                   )}
                 </Box>
               )}
 
-              {/* HUD kecil saat berjalan */}
               {running && (
-                <Group
-                  gap="xs"
-                  style={{ position: "absolute", top: 12, left: 12 }}
-                >
+                <Group gap="xs" style={{ position: "absolute", top: 12, left: 12 }}>
                   <Badge color="dark" variant="filled" leftSection={<IconActivity size={12} />}>
                     {fps} FPS
                   </Badge>
@@ -312,7 +336,7 @@ export default function LiveDetection() {
                     Tupai: {count.tupai}
                   </Badge>
                   <Badge color="blue" variant="filled">
-                    Objek: {count.objek}
+                    Lainnya: {count.objek}
                   </Badge>
                 </Group>
               )}
@@ -384,7 +408,8 @@ export default function LiveDetection() {
               />
               <Divider my="md" color="#eef2ef" />
               <Stack gap="sm">
-                <MetaRow label="Model" value="COCO-SSD · lite MobileNet v2" />
+                <MetaRow label="Deteksi (kotak)" value="COCO-SSD" />
+                <MetaRow label="Spesies (label)" value="MobileNet · ImageNet" />
                 <MetaRow label="Runtime" value="TensorFlow.js (WebGL)" />
                 <MetaRow label="Pemrosesan" value="Di perangkat (edge)" />
                 <MetaRow
@@ -401,19 +426,19 @@ export default function LiveDetection() {
             <Card padding="lg">
               <Group justify="space-between" mb={2}>
                 <Text fw={620} c="#1f2a26">
-                  Log deteksi tupai
+                  Log famili tupai
                 </Text>
                 {running && (
                   <Box w={8} h={8} style={{ background: "#499b57", borderRadius: "50%" }} />
                 )}
               </Group>
               <Text fz="xs" c="dimmed" mb="sm">
-                Deteksi terbaru (maks. 12)
+                Deteksi Sciuridae terbaru (maks. 12)
               </Text>
               <ScrollArea h={196}>
                 {log.length === 0 ? (
                   <Text fz="sm" c="dimmed" ta="center" py="xl">
-                    Belum ada deteksi.
+                    Belum ada deteksi famili tupai.
                   </Text>
                 ) : (
                   <Stack gap={0}>
@@ -425,9 +450,9 @@ export default function LiveDetection() {
                             <Text className="tabnums" fz="xs" c="dimmed">
                               {l.t}
                             </Text>
-                            <Badge size="sm" variant="light" color="sawit">
-                              Tupai (simulasi)
-                            </Badge>
+                            <Text fz="sm" fw={550} c="#1f2a26" tt="capitalize">
+                              {l.name}
+                            </Text>
                           </Group>
                           <Text className="tabnums" fz="sm" fw={600} c="#2f773d">
                             {(l.score * 100).toFixed(0)}%
@@ -440,32 +465,25 @@ export default function LiveDetection() {
               </ScrollArea>
             </Card>
 
-            <Alert
-              color="sawit"
-              variant="light"
-              icon={<IconShieldLock size={18} />}
-            >
+            <Alert color="sawit" variant="light" icon={<IconShieldLock size={18} />}>
               <Text fz="xs" c="#3d4d45">
-                Citra kamera diproses sepenuhnya di perangkatmu dan tidak
-                pernah dikirim ke server — selaras dengan pendekatan
-                <i> edge processing</i> pada proposal.
+                Citra kamera diproses sepenuhnya di perangkatmu dan tidak pernah
+                dikirim ke server — selaras dengan pendekatan <i>edge processing</i>{" "}
+                pada proposal.
               </Text>
             </Alert>
           </Stack>
         </Grid.Col>
       </Grid>
 
-      <Card
-        padding="md"
-        mt="md"
-        style={{ background: "#fffaf3", borderColor: "#f0e2cc" }}
-      >
+      <Card padding="md" mt="md" style={{ background: "#fffaf3", borderColor: "#f0e2cc" }}>
         <Text fz="xs" c="#5a4f3d" lh={1.5}>
-          <b>Catatan simulasi:</b> demo ini memakai model objek umum (COCO-SSD).
-          Kelas hewan/berbulu yang terdeteksi ditandai sebagai
-          "Tupai (simulasi)" untuk meniru perilaku pipeline RT-DETR/YOLO pada
-          sistem sebenarnya. Untuk deteksi tupai asli, model dilatih khusus pada
-          dataset gerekan buah &amp; tupai lapangan seperti dijelaskan di proposal.
+          <b>Cara membaca:</b> kotak digambar oleh COCO-SSD (lokasi objek), sedangkan
+          label spesies diisi oleh MobileNet yang dilatih pada ImageNet (1000 kelas,
+          termasuk <i>fox squirrel</i> &amp; <i>marmot</i> dari famili Sciuridae).
+          Objek yang dikenali sebagai famili tupai ditandai hijau; spesies lain biru.
+          Untuk deteksi tupai lokal yang lebih presisi, model dilatih khusus pada
+          dataset lapangan seperti dijelaskan di proposal.
         </Text>
       </Card>
     </>

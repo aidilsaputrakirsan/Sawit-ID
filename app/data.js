@@ -97,7 +97,22 @@ export const DETEKSI = [
   { t: "06:54:18", kamera: "CAM-B02", blok: "E", objek: "Tupai", spesies: "C. notatus", conf: 0.95, posisi: "Batang" },
 ];
 
-/* ---------- 6. Peta kebun & hotspot (viewBox 820 x 560) ---------- */
+/* ---------- 6. Peta kebun & hotspot (viewBox 820 x 560) ----------
+   Koordinat di bawah memakai ruang kanvas 820 x 560 (mudah ditata).
+   Untuk peta Leaflet, titik diproyeksikan ke lintang/bujur asli melalui
+   toLatLng(). Lokasi pusat dipilih di kawasan sawit rakyat Riau
+   (contoh; ganti dengan koordinat lokasi mitra sesungguhnya). */
+export const GEO_CENTER = [0.5240, 101.4350]; // [lintang, bujur]
+const SPAN_LNG = 0.0052; // rentang bujur untuk lebar 820 px (~580 m)
+const SPAN_LAT = 0.0036; // rentang lintang untuk tinggi 560 px (~400 m)
+
+// proyeksi sederhana kanvas -> [lintang, bujur]
+export function toLatLng([x, y]) {
+  const lng = GEO_CENTER[1] + ((x - 410) / 820) * SPAN_LNG;
+  const lat = GEO_CENTER[0] - ((y - 280) / 560) * SPAN_LAT; // y ke bawah = lintang turun
+  return [lat, lng];
+}
+
 export const BOUNDARY = [
   [70, 120], [400, 78], [752, 110], [770, 300],
   [700, 486], [380, 520], [96, 470], [52, 250],

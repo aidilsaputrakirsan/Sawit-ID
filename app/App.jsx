@@ -27,13 +27,14 @@ import {
 
 import { SITE } from "./data.js";
 import Overview from "./sections/Overview.jsx";
-import HotspotMap from "./sections/HotspotMap.jsx";
 import Detection from "./sections/Detection.jsx";
 import Baci from "./sections/Baci.jsx";
 import Intervention from "./sections/Intervention.jsx";
 
-// Dimuat terpisah: TensorFlow.js besar, jangan masuk bundle utama.
+// Dimuat terpisah agar bundle utama tetap ringan:
+// TensorFlow.js (Live) & Leaflet (Peta) cukup besar.
 const LiveDetection = lazy(() => import("./sections/LiveDetection.jsx"));
+const HotspotMap = lazy(() => import("./sections/HotspotMap.jsx"));
 
 const NAV = [
   { key: "ringkasan", label: "Ringkasan", icon: IconLayoutDashboard, Comp: Overview },

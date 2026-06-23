@@ -15,9 +15,13 @@
     "@mantine/hooks": "^7.17.8",
     "@tabler/icons-react": "^3.44.0",
     "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow-models/mobilenet": "^2.1.1",
     "@tensorflow/tfjs": "^4.22.0",
+    "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
     "recharts": "^2.15.4"
   },
   "devDependencies": {
