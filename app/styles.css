@@ -1,0 +1,27 @@
+:root {
+  --app-bg: #f6f8f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+  color: #1f2a26;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* angka rata (tabular) supaya metrik tidak "geser" */
+.tabnums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
